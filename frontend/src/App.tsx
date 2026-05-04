@@ -134,31 +134,17 @@ export default function App() {
   };
 
   useEffect(() => {
-  if (!jobId || status !== "scanning") return;
-
-  const interval = setInterval(async () => {
-    try {
-      const res = await fetch(`http://localhost:3000/scan/${jobId}`);
-      const data = await res.json();
-
-      if (data.status === "completed") {
-        setResult(data.result);
-        setStatus("completed");
-        clearInterval(interval);
-      } else if (data.status === "failed") {
-        setError(data.error || "Scan failed");
-        setStatus("failed");
-        clearInterval(interval);
-      }
-    } catch (e: any) {
-      setError(e.message);
-      setStatus("failed");
-      clearInterval(interval);
-    }
-  }, 2000);
-
-  return () => clearInterval(interval);
-}, [jobId, status]);
+    if (!jobId) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`http://localhost:3000/scan/${jobId}`);
+        const data = await res.json();
+        if (data.status === "completed") { setResult(data.result); setStatus("completed"); clearInterval(interval); }
+        else if (data.status === "failed") { setError(data.error || "Scan failed"); setStatus("failed"); clearInterval(interval); }
+      } catch (e: any) { setError(e.message); setStatus("failed"); clearInterval(interval); }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [jobId]);
 
   const filteredFindings = result?.findings.filter(
     (f) => filterSeverity === "ALL" || f.severity === filterSeverity
@@ -168,6 +154,70 @@ export default function App() {
     setFile(null); setRepoUrl(""); setJobId(null);
     setStatus("idle"); setResult(null); setError(null); setFilterSeverity("ALL");
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const downloadJSON = () => {
+    if (!result) return;
+    const blob = new Blob([JSON.stringify(result, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "moirai-report.json"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadCSV = () => {
+    if (!result) return;
+    const headers = ["ID", "Severity", "Title", "File", "Type", "Description", "Resolution"];
+    const rows = result.findings.map((f) => [
+      f.id, f.severity,
+      `"${f.title.replace(/"/g, '""')}"`,
+      `"${f.file.replace(/"/g, '""')}"`,
+      f.type,
+      `"${(f.description || "").replace(/"/g, '""')}"`,
+      `"${(f.resolution || "").replace(/"/g, '""')}"`,
+    ]);
+    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "moirai-report.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadPDF = () => {
+    if (!result) return;
+    const date = new Date().toLocaleString("pt-BR");
+    const sColor: Record<string, string> = {
+      CRITICAL: "#ff2d55", HIGH: "#ff6b35", MEDIUM: "#ffd60a", LOW: "#30d158", UNKNOWN: "#8e8e93",
+    };
+    const findingsHTML = result.findings.map((f) => `
+      <div style="margin-bottom:16px;padding:14px;border:1px solid #e5e7eb;border-radius:8px;page-break-inside:avoid;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <span style="background:${sColor[f.severity] ?? '#888'}22;color:${sColor[f.severity] ?? '#888'};border:1px solid ${sColor[f.severity] ?? '#888'}44;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;">${f.severity}</span>
+          <strong style="font-size:14px;">${f.title}</strong>
+          <span style="margin-left:auto;color:#9ca3af;font-size:12px;font-family:monospace;">${f.id}</span>
+        </div>
+        ${f.description ? `<p style="color:#6b7280;font-size:13px;margin:0 0 8px;">${f.description}</p>` : ""}
+        ${f.message ? `<div style="background:#fff1f2;border-left:3px solid #ff2d55;padding:8px 12px;border-radius:4px;font-size:13px;color:#374151;margin-bottom:8px;">${f.message}</div>` : ""}
+        ${f.resolution ? `<p style="font-size:12px;color:#059669;margin:0;"><strong>Resolução:</strong> ${f.resolution}</p>` : ""}
+        <p style="font-size:11px;color:#9ca3af;margin:6px 0 0;">📄 ${f.file} · ${f.type}</p>
+      </div>
+    `).join("");
+    const summaryHTML = (["CRITICAL","HIGH","MEDIUM","LOW","UNKNOWN"] as const).map((s) => {
+      const count = result.summary[s.toLowerCase() as keyof typeof result.summary];
+      return `<div style="padding:10px 16px;border:1px solid ${sColor[s]}44;border-radius:8px;text-align:center;min-width:80px;"><div style="font-size:22px;font-weight:700;color:${sColor[s]};">${count}</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:${sColor[s]};">${s}</div></div>`;
+    }).join("");
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Moirai Report</title><style>body{font-family:'Segoe UI',sans-serif;color:#111;padding:40px;max-width:860px;margin:0 auto;}h1{font-size:28px;margin-bottom:4px;}h2{font-size:16px;font-weight:600;margin:32px 0 12px;border-bottom:1px solid #e5e7eb;padding-bottom:6px;}</style></head><body>
+      <h1>⚡ Moirai</h1>
+      <p style="color:#6b7280;font-size:13px;">Relatório gerado em ${date}</p>
+      <h2>Resumo</h2>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;">${summaryHTML}</div>
+      <p style="color:#6b7280;font-size:13px;">${result.summary.total} findings no total</p>
+      <h2>Findings</h2>
+      ${result.findings.length === 0 ? '<p style="color:#059669;">Nenhuma misconfiguration detectada.</p>' : findingsHTML}
+    </body></html>`;
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, "_blank");
+    win?.addEventListener("load", () => { win.print(); URL.revokeObjectURL(url); });
   };
 
   return (
@@ -183,6 +233,7 @@ export default function App() {
         .scan-btn { transition: all 0.15s ease !important; }
         .mode-tab:hover { color: #f0f0f0 !important; }
         .filter-btn:hover { border-color: rgba(255,255,255,0.3) !important; }
+        .dl-btn:hover { background: rgba(255,255,255,0.08) !important; border-color: rgba(255,255,255,0.2) !important; transform: translateY(-1px); }
         input:focus { border-color: rgba(255,45,85,0.4) !important; box-shadow: 0 0 0 3px rgba(255,45,85,0.08) !important; }
       `}</style>
 
@@ -342,6 +393,38 @@ export default function App() {
               ) : (
                 filteredFindings.map((f, i) => <FindingCard key={`${f.id}-${i}`} finding={f} index={i} />)
               )}
+            </div>
+
+            {/* Download Section */}
+            <div style={{ marginTop: 32, padding: "20px 24px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14 }}>
+              <p style={{ color: "#555", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600, marginBottom: 14 }}>
+                Exportar relatório
+              </p>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {([
+                  { label: "JSON", icon: "{}", fn: downloadJSON, desc: "Dados brutos" },
+                  { label: "CSV",  icon: "⊞", fn: downloadCSV,  desc: "Planilha" },
+                  { label: "PDF",  icon: "⎙", fn: downloadPDF,  desc: "Relatório imprimível" },
+                ] as const).map(({ label, icon, fn, desc }) => (
+                  <button
+                    key={label}
+                    className="dl-btn"
+                    onClick={fn}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)",
+                      borderRadius: 10, padding: "10px 18px", cursor: "pointer",
+                      fontFamily: "inherit", transition: "all 0.15s ease",
+                    }}
+                  >
+                    <span style={{ fontSize: 16 }}>{icon}</span>
+                    <div style={{ textAlign: "left" }}>
+                      <div style={{ color: "#f0f0f0", fontSize: 13, fontWeight: 700 }}>{label}</div>
+                      <div style={{ color: "#555", fontSize: 11 }}>{desc}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
