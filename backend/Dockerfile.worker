@@ -1,0 +1,16 @@
+# backend/Dockerfile.worker
+FROM node:20-alpine AS base
+
+# Install Trivy + git (needed for repo cloning)
+RUN apk add --no-cache git curl bash \
+  && curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+     | sh -s -- -b /usr/local/bin
+
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install --omit=dev
+
+COPY src/ ./src/
+
+CMD ["node", "src/workers/scanWorker.js"]
