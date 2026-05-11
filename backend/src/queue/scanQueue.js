@@ -5,7 +5,7 @@ import { redisConnection } from "../config/redis.js";
 export const scanQueue = new Queue("scan", {
   connection: redisConnection,
   defaultJobOptions: {
-    attempts: 3,
+    attempts: 1,
     backoff: {
       type: "exponential",
       delay: 2000,

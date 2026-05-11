@@ -1,7 +1,23 @@
 version: "3.9"
 
 services:
-  # ─── Redis ──────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: moirai
+      POSTGRES_USER: moirai
+      POSTGRES_PASSWORD: moirai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moirai"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -15,7 +31,6 @@ services:
       timeout: 3s
       retries: 5
 
-  # ─── API ────────────────────────────────────────────────────────────────────
   api:
     build:
       context: ./backend
@@ -26,6 +41,11 @@ services:
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: moirai
+      POSTGRES_USER: moirai
+      POSTGRES_PASSWORD: moirai
       UPLOADS_DIR: /app/uploads
       PORT: 3000
       CORS_ORIGIN: "*"
@@ -34,8 +54,9 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
 
-  # ─── Worker ─────────────────────────────────────────────────────────────────
   worker:
     build:
       context: ./backend
@@ -44,6 +65,11 @@ services:
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: moirai
+      POSTGRES_USER: moirai
+      POSTGRES_PASSWORD: moirai
       UPLOADS_DIR: /app/uploads
       WORKER_CONCURRENCY: 2
     volumes:
@@ -51,8 +77,9 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
 
-  # ─── Frontend ───────────────────────────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
@@ -64,5 +91,6 @@ services:
       - api
 
 volumes:
+  postgres_data:
   redis_data:
   uploads_data:
