@@ -1,5 +1,11 @@
 # ⚡ Moirai
 
+<div style="display: flex; justify-content: center;">
+       <img src="/assets/moirai.png" alt="Moirasi Image" width="200">
+</div>
+
+---
+
 **Scanner de segurança DevSecOps.**
 Detecta misconfigurations em Dockerfiles e IaC, secrets expostos no código, vulnerabilidades em imagens Docker — com remediação gerada por IA e histórico de scans.
 
