@@ -48,7 +48,7 @@ fastify.post("/file", async (request, reply) => {
     const parts = request.parts();
     let repoUrl = null, ignoreFilePath = null;
     for await (const part of parts) {
-      if (part.type === "field" && part.fieldname === "repoUrl") repoUrl = part.value;
+      if (part.type === "field" && part.fieldname === "repoUrl") repoUrl = part.value.trim();
       if (part.type === "file"  && part.fieldname === "ignoreFile") { ({ filePath: ignoreFilePath } = await saveField(part, "ignore")); }
     }
     if (!repoUrl) return reply.status(400).send({ error: "repoUrl is required" });

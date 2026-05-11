@@ -5,9 +5,7 @@ type Severity   = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN";
 type ScanStatus = "idle" | "scanning" | "completed" | "failed";
 type ScanMode   = "file" | "repo" | "image" | "secrets" | "compare" | "history";
 
-interface Finding  { file:string; type:string; id:string; title:string; severity:Severity; description:string; message:string; resolution:string; references:string[]; status:string; 
-  causeMetadata?: { StartLine?: number; EndLine?: number; Code?: { Lines?: { Number: number; Content: string; IsCause: boolean }[] } } | null;
-}
+interface Finding  { file:string; type:string; id:string; title:string; severity:Severity; description:string; message:string; resolution:string; references:string[]; status:string; causeMetadata?: { StartLine?: number; EndLine?: number }; }
 interface Summary  { total:number; critical:number; high:number; medium:number; low:number; unknown:number; }
 interface ScanResult  { summary:Summary; findings:Finding[]; score?:number; }
 interface CompareResult { summary:{ before:Summary; after:Summary; new:number; fixed:number; persisted:number }; new:Finding[]; fixed:Finding[]; persisted:Finding[]; }
@@ -37,7 +35,7 @@ function ScoreGauge({ score }:{ score:number }) {
         <circle cx={cx} cy={cy} r={r} fill="none" stroke={c} strokeWidth={stroke}
           strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
           transform={`rotate(-90 ${cx} ${cy})`} style={{ transition:"stroke-dasharray 0.6s ease" }}/>
-        <text x={cx} y={cy+1} textAnchor="middle" dominantBaseline="middle" fill={c} fontSize={18} fontWeight={800} fontFamily="'Syne',sans-serif">{score}</text>
+        <text x={cx} y={cy+1} textAnchor="middle" dominantBaseline="middle" fill={c} fontSize={18} fontWeight={800} fontFamily="'Poppins',sans-serif">{score}</text>
       </svg>
       <span style={{ color:c, fontSize:12, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em" }}>{scoreLabel(score)}</span>
     </div>
@@ -49,9 +47,47 @@ function SeverityBadge({ severity }:{ severity:Severity }) {
   return <span style={{ display:"inline-flex", alignItems:"center", padding:"2px 10px", borderRadius:20, fontSize:11, fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", color:c.color, background:c.bg, border:`1px solid ${c.color}33` }}>{c.label}</span>;
 }
 
+interface Remediation { snippet: string; explanation: string; }
+
+function CodeBlock({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => { navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); };
+  return (
+    <div style={{ position:"relative", marginTop:4 }}>
+      <pre style={{ background:"#0d1117", border:"1px solid rgba(255,255,255,0.08)", borderRadius:8, padding:"14px 16px", fontSize:12, color:"#e6edf3", overflowX:"auto", lineHeight:1.6, margin:0, fontFamily:"'Fira Code','Cascadia Code',monospace", whiteSpace:"pre-wrap", wordBreak:"break-all" }}>{code}</pre>
+      <button onClick={copy} style={{ position:"absolute", top:8, right:8, background:"rgba(255,255,255,0.08)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:6, padding:"3px 10px", cursor:"pointer", color:"#888", fontSize:11, fontFamily:"inherit" }}>
+        {copied ? "✓ copiado" : "copiar"}
+      </button>
+    </div>
+  );
+}
+
 function FindingCard({ finding, index, tag }:{ finding:Finding; index:number; tag?:{ label:string; color:string } }) {
   const [open, setOpen] = useState(false);
+  const [remediation, setRemediation] = useState<Remediation | null>(null);
+  const [remLoading, setRemLoading] = useState(false);
+  const [remError, setRemError] = useState<string | null>(null);
+  const fetchedRef = useRef(false);
   const isSecret = finding.type === "secret";
+
+  useEffect(() => {
+    if (!open || fetchedRef.current || isSecret) return;
+    fetchedRef.current = true;
+    setRemLoading(true);
+    fetch("http://localhost:3000/remediation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ finding }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) setRemError(d.error);
+        else setRemediation(d);
+      })
+      .catch(e => setRemError(e.message))
+      .finally(() => setRemLoading(false));
+  }, [open]);
+
   return (
     <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${isSecret?"rgba(255,45,85,0.2)":"rgba(255,255,255,0.07)"}`, borderRadius:12, overflow:"hidden", animation:"fadeUp 0.3s ease both", animationDelay:`${index*35}ms` }}>
       <button onClick={() => setOpen(!open)} style={{ width:"100%", background:"none", border:"none", padding:"14px 18px", cursor:"pointer", display:"flex", alignItems:"center", gap:10, textAlign:"left" }}>
@@ -66,20 +102,49 @@ function FindingCard({ finding, index, tag }:{ finding:Finding; index:number; ta
         <div style={{ padding:"0 18px 16px", borderTop:"1px solid rgba(255,255,255,0.05)" }}>
           <p style={{ color:"#999", fontSize:13, marginTop:12 }}>{finding.description}</p>
           {finding.message && <div style={{ marginTop:10, padding:"10px 14px", background:"rgba(255,45,85,0.06)", borderRadius:8, borderLeft:"3px solid #ff2d55" }}><p style={{ color:"#ccc", fontSize:13, margin:0, fontFamily:"monospace", wordBreak:"break-all" }}>{finding.message}</p></div>}
-          {finding.resolution && <div style={{ marginTop:10 }}><span style={{ color:"#30d158", fontSize:12, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.06em" }}>Resolução</span><p style={{ color:"#aaa", fontSize:13, marginTop:4 }}>{finding.resolution}</p></div>}
-          <div style={{ marginTop:8, display:"flex", gap:8, flexWrap:"wrap" }}>
+          {finding.resolution && <div style={{ marginTop:10 }}><span style={{ color:"#30d158", fontSize:12, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.06em" }}>Resolução sugerida</span><p style={{ color:"#aaa", fontSize:13, marginTop:4 }}>{finding.resolution}</p></div>}
+          <div style={{ marginTop:8, display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
             <span style={{ color:"#555", fontSize:12 }}>📄 {finding.file}</span>
             <span style={{ color:"#333" }}>·</span>
             <span style={{ color:"#555", fontSize:12 }}>{finding.type}</span>
             {finding.causeMetadata?.StartLine && (
-              <span style={{ color:"#555", fontSize:12 }}>
-                · linha {finding.causeMetadata.StartLine}
-                {finding.causeMetadata.EndLine && finding.causeMetadata.EndLine !== finding.causeMetadata.StartLine
-                  ? `–${finding.causeMetadata.EndLine}`
-                  : ""}
-              </span>
+              <>
+                <span style={{ color:"#333" }}>·</span>
+                <span style={{ color:"#6366f1", fontSize:12, fontWeight:600 }}>
+                  linha {finding.causeMetadata.StartLine}
+                  {finding.causeMetadata.EndLine && finding.causeMetadata.EndLine !== finding.causeMetadata.StartLine
+                    ? `–${finding.causeMetadata.EndLine}` : ""}
+                </span>
+              </>
             )}
           </div>
+
+          {/* ── AI Remediation ── */}
+          {!isSecret && (
+            <div style={{ marginTop:16, padding:"14px 16px", background:"rgba(99,102,241,0.06)", border:"1px solid rgba(99,102,241,0.2)", borderRadius:10 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+                <span style={{ fontSize:14 }}>✨</span>
+                <span style={{ color:"#a5b4fc", fontSize:12, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em" }}>Remediação gerada por IA</span>
+              </div>
+
+              {remLoading && (
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ width:16, height:16, border:"2px solid rgba(99,102,241,0.3)", borderTopColor:"#a5b4fc", borderRadius:"50%", animation:"spin 0.8s linear infinite", flexShrink:0 }}/>
+                  <span style={{ color:"#555", fontSize:13, animation:"pulse 2s ease infinite" }}>Gerando remediação...</span>
+                </div>
+              )}
+
+              {remError && <p style={{ color:"#f87171", fontSize:13 }}>Erro: {remError}</p>}
+
+              {remediation && !remLoading && (
+                <div>
+                  <p style={{ color:"#c7d2fe", fontSize:13, marginBottom:10, lineHeight:1.6 }}>{remediation.explanation}</p>
+                  <span style={{ color:"#a5b4fc", fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.08em" }}>Código corrigido</span>
+                  <CodeBlock code={remediation.snippet} />
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -331,7 +396,7 @@ export default function App() {
           <div style={{ animation:"fadeUp 0.4s ease both" }}>
             {mode!=="history" && (
               <>
-                <h1 style={{ fontFamily:"'Syne',sans-serif", fontSize:34, fontWeight:800, letterSpacing:"-0.03em", marginBottom:8 }}>
+                <h1 style={{ fontFamily:"'Poppins',sans-serif", fontSize:34, fontWeight:800, letterSpacing:"-0.03em", marginBottom:8 }}>
                   Scan for<br/>
                   <span style={{ background:"linear-gradient(90deg,#ff2d55,#ff6b35)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>misconfigurations.</span>
                 </h1>
@@ -352,7 +417,7 @@ export default function App() {
             {mode==="history" && (
               <div>
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
-                  <h2 style={{ fontFamily:"'Syne',sans-serif", fontSize:22, fontWeight:800 }}>Histórico de Scans</h2>
+                  <h2 style={{ fontFamily:"'Poppins',sans-serif", fontSize:22, fontWeight:800 }}>Histórico de Scans</h2>
                   <button onClick={()=>{ setHistoryLoading(true); fetch(`${API}/history`).then(r=>r.json()).then(d=>{ setHistory(d.scans||[]); setHistoryLoading(false); }); }} style={{ background:"none", border:"1px solid rgba(255,255,255,0.1)", color:"#888", padding:"6px 14px", borderRadius:8, cursor:"pointer", fontSize:12, fontFamily:"inherit" }}>↻ Atualizar</button>
                 </div>
                 {historyLoading ? (
@@ -379,7 +444,7 @@ export default function App() {
                         <span style={{ color:"#555", fontSize:12, background:"rgba(255,255,255,0.05)", padding:"2px 8px", borderRadius:6, textAlign:"center" }}>{row.type}</span>
                         <div style={{ display:"flex", justifyContent:"center" }}>
                           <div style={{ textAlign:"center" }}>
-                            <span style={{ color:scoreColor(row.score), fontSize:18, fontWeight:800, fontFamily:"'Syne',sans-serif" }}>{row.score}</span>
+                            <span style={{ color:scoreColor(row.score), fontSize:18, fontWeight:800, fontFamily:"'Poppins',sans-serif" }}>{row.score}</span>
                             <p style={{ color:scoreColor(row.score), fontSize:10, textTransform:"uppercase", letterSpacing:"0.06em" }}>{scoreLabel(row.score)}</p>
                           </div>
                         </div>
@@ -488,7 +553,7 @@ export default function App() {
                   {(["critical","high","medium","low","unknown"] as const).map(sev=>{
                     const cfg=SEV[sev.toUpperCase() as Severity]; const count=result.summary[sev];
                     return <div key={sev} style={{ padding:"10px 8px", background:count>0?cfg.bg:"rgba(255,255,255,0.02)", border:`1px solid ${count>0?cfg.color+"44":"rgba(255,255,255,0.06)"}`, borderRadius:8, textAlign:"center" }}>
-                      <div style={{ fontSize:18, fontWeight:700, color:count>0?cfg.color:"#333", fontFamily:"'Syne',sans-serif" }}>{count}</div>
+                      <div style={{ fontSize:18, fontWeight:700, color:count>0?cfg.color:"#333", fontFamily:"'Poppins',sans-serif" }}>{count}</div>
                       <div style={{ fontSize:9, color:count>0?cfg.color:"#444", textTransform:"uppercase", letterSpacing:"0.1em", marginTop:2 }}>{cfg.label}</div>
                     </div>;
                   })}
@@ -535,11 +600,11 @@ export default function App() {
         {/* ── COMPARE RESULTS ── */}
         {status==="completed" && compareResult && (
           <div style={{ animation:"fadeUp 0.4s ease both" }}>
-            <h2 style={{ fontFamily:"'Syne',sans-serif", fontSize:22, fontWeight:800, marginBottom:20 }}>Resultado da Comparação</h2>
+            <h2 style={{ fontFamily:"'Poppins',sans-serif", fontSize:22, fontWeight:800, marginBottom:20 }}>Resultado da Comparação</h2>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:24 }}>
               {[{label:"Novos",count:compareResult.summary.new,color:"#ff2d55",icon:"↑"},{label:"Corrigidos",count:compareResult.summary.fixed,color:"#30d158",icon:"↓"},{label:"Persistindo",count:compareResult.summary.persisted,color:"#ffd60a",icon:"→"}].map(({label,count,color,icon})=>(
                 <div key={label} style={{ padding:"18px 16px", background:`${color}0f`, border:`1px solid ${color}33`, borderRadius:12, textAlign:"center" }}>
-                  <div style={{ fontSize:28, fontWeight:800, color, fontFamily:"'Syne',sans-serif" }}>{icon} {count}</div>
+                  <div style={{ fontSize:28, fontWeight:800, color, fontFamily:"'Poppins',sans-serif" }}>{icon} {count}</div>
                   <div style={{ fontSize:11, color, textTransform:"uppercase", letterSpacing:"0.1em", marginTop:4 }}>{label}</div>
                 </div>
               ))}

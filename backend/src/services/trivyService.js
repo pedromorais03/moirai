@@ -56,9 +56,14 @@ export async function scanRepo(repoUrl, { ignoreFile } = {}) {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "moirai-repo-"));
 
   try {
-    await execF("git", ["clone", "--depth", "1", repoUrl, tmpDir], {
+    const { stdout, stderr } = await execF("git", ["clone", "--depth", "1", repoUrl, tmpDir], {
       timeout: 60_000,
+    }).catch(err => {
+      throw new Error(`Git clone failed.\nstdout: ${err.stdout}\nstderr: ${err.stderr}\nmessage: ${err.message}`);
     });
+
+    console.log("[git] clone stdout:", stdout);
+    console.log("[git] clone stderr:", stderr);
 
     return await scanPath(tmpDir, { ignoreFile });
   } finally {

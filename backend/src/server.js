@@ -3,6 +3,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import { scanRoutes } from "./routes/scan.js";
+import { remediationRoutes } from "./routes/remediation.js";
 
 const PORT = parseInt(process.env.PORT || "3000");
 const HOST = process.env.HOST || "0.0.0.0";
@@ -33,6 +34,7 @@ fastify.get("/health", async () => ({ status: "ok" }));
 
 // Scan routes
 await fastify.register(scanRoutes, { prefix: "/scan" });
+await fastify.register(remediationRoutes, { prefix: "/remediation" });
 
 try {
   await fastify.listen({ port: PORT, host: HOST });
