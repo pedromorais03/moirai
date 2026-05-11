@@ -17,9 +17,9 @@ Detecta misconfigurations em Dockerfiles e IaC, secrets expostos no código, vul
 ┌─────────────┐     POST /scan/file      ┌─────────────┐
 │             │ ────────────────────── ▶ │             │
 │  Frontend   │     POST /scan/repo      │     API     │
-│  :5173      │ ───────────────────────▶ │    :3000    │
+│  :5173      │ ────────────────────── ▶ │    :3000    │
 │             │     GET  /scan/:jobId    │             │
-│             │ ◀ ───────────────────────│             │
+│             │ ◀ ────────────────────── │             │
 └─────────────┘                          └──────┬──────┘
                                                 │ enfileira job
                                          ┌──────▼──────┐
