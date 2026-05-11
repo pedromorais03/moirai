@@ -1,6 +1,6 @@
 # ⚡ Moirai
 
-<div style="display: flex; justify-content: center;">
+<div style="width: 100%; display: flex; justify-content: center;">
        <img src="/assets/moirai.png" alt="Moirasi Image" width="200">
 </div>
 
